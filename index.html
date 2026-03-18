@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chai Kemistri</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <style>
+    body { margin:0; font-family:Poppins; background:#F5E6C8; overflow-x:hidden; }
+    header { text-align:center; background:#5C4033; color:white; padding:12px; }
+    header img { width:70px; border-radius:50%; }
+    .cart-btn { position:fixed; top:12px; right:12px; background:#2E8B8B; color:white; padding:8px 14px; border-radius:25px; font-weight:bold; cursor:pointer; }
+    .categories { display:flex; overflow:auto; padding:10px; gap:8px; }
+    .cat-btn { background:white; padding:6px 12px; border-radius:20px; cursor:pointer; font-size:13px; }
+    .cat-btn.active { background:#5C4033; color:white; }
+    .menu { padding:10px; }
+    .item { display:flex; justify-content:space-between; align-items:center; background:white; padding:12px; margin:6px 0; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.08); }
+    .add-btn { background:#D4A373; border:none; padding:6px 12px; border-radius:8px; cursor:pointer; }
+    .cart-popup { position:fixed; bottom:-100%; left:0; width:100%; background:white; border-radius:20px 20px 0 0; padding:15px; transition:0.4s; }
+    .cart-popup.active { bottom:0; }
+    .cart-item { display:flex; align-items:center; margin:10px 0; }
+    .cart-line { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .cart-text { font-size:14px; }
+    .cart-controls { display:flex; align-items:center; gap:5px; }
+    .cart-controls button { padding:4px 8px; border:none; background:#ddd; border-radius:5px; cursor:pointer; }
+    .place-btn { width:100%; padding:12px; margin-top:10px; background:#2E8B8B; color:white; border:none; border-radius:10px; }
+    .toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:#333; color:white; padding:8px 15px; border-radius:20px; display:none; }
+    .popup-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:flex; justify-content:center; align-items:center; z-index:999; }
+    .popup-box { background:white; padding:20px; border-radius:15px; width:90%; max-width:350px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="logo.png">
+  <h3>Chai Kemistri</h3>
+</header>
+
+<div class="cart-btn" onclick="openCart()">🛒 (<span id="cartCount">0</span>)</div>
+
+<div class="categories"></div>
+
+<div class="menu" id="menu"></div>
+
+<div id="cartPopup" class="cart-popup">
+  <h3>Your Cart</h3>
+  <div id="cartItems"></div>
+  <p><b>Total: ₹<span id="total">0</span></b></p>
+  <button class="place-btn" onclick="placeOrder()">Place Order</button>
+</div>
+
+<div id="toast" class="toast">Item added</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, push } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+// 🔹 Firebase config
+const firebaseConfig = {
+    apiKey: "AIzaSyDOb5A4AomHgJTS2HZdyd_w8fgWU87ciNU",
+    authDomain: "chaiordering.firebaseapp.com",
+    databaseURL: "https://chaiordering-default-rtdb.firebaseio.com",
+    projectId: "chaiordering",
+    storageBucket: "chaiordering.firebasestorage.app",
+    messagingSenderId: "785518509461",
+    appId: "1:785518509461:web:b428d69a0819161fc10a9c"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const menuRef = ref(db, 'menu');
+const categoriesRef = ref(db, 'categories');
+const ordersRef = ref(db, 'orders');
+
+let items = [];
+let categories = [];
+let cart = [];
+let total = 0;
+
+// 🔹 Load categories dynamically
+onValue(categoriesRef, snapshot => {
+    const data = snapshot.val();
+    categories = [];
+    const categoriesDiv = document.querySelector(".categories");
+    categoriesDiv.innerHTML = `<div class="cat-btn active" onclick="filterMenu('all',this)">All</div>`;
+    if(data){
+        Object.values(data).forEach(cat=>{
+            categories.push(cat.name);
+            const div = document.createElement("div");
+            div.className = "cat-btn";
+            div.textContent = cat.name;
+            div.onclick = function(){ filterMenu(cat.name,this); };
+            categoriesDiv.appendChild(div);
+        });
+    }
+});
+
+// 🔹 Load menu dynamically
+onValue(menuRef, snapshot => {
+    const data = snapshot.val();
+    items = [];
+    if(data){
+        Object.values(data).forEach(item => items.push(item));
+    }
+    loadMenu();
+});
+
+// --- MENU & CART FUNCTIONS ---
+function loadMenu(filter="all"){
+    const menu = document.getElementById("menu");
+    menu.innerHTML = "";
+    items.filter(i => filter==="all" || i.category===filter)
+         .forEach(item=>{
+        menu.innerHTML += `
+            <div class="item">
+                <div>${item.name} - ₹${item.price}</div>
+                <button class="add-btn" onclick="addItem('${item.name}',${item.price})">Add</button>
+            </div>`;
+    });
+}
+
+window.filterMenu = function(cat, el){
+    document.querySelectorAll(".cat-btn").forEach(b=>b.classList.remove("active"));
+    el.classList.add("active");
+    loadMenu(cat);
+}
+
+// --- Cart functions ---
+window.addItem = function(name, price){
+    cart.push({name, price});
+    total += price;
+    updateCart();
+    showToast();
+}
+
+function updateCart(){
+    let grouped = {};
+    cart.forEach(i => {
+        if(!grouped[i.name]) grouped[i.name] = { price:i.price, qty:1 };
+        else grouped[i.name].qty++;
+    });
+    let html="", count=0;
+    for(let n in grouped){
+        let i = grouped[n];
+        count += i.qty;
+        html += `
+            <div class="cart-item">
+                <div class="cart-line">
+                    <span class="cart-text">${n} - ₹${i.price*i.qty}</span>
+                    <span class="cart-controls">
+                        <button onclick="decreaseItem('${n}')">−</button>
+                        <b>${i.qty}</b>
+                        <button onclick="increaseItem('${n}',${i.price})">+</button>
+                    </span>
+                </div>
+            </div>`;
+    }
+    document.getElementById("cartItems").innerHTML = html;
+    document.getElementById("total").innerText = total;
+    document.getElementById("cartCount").innerText = count;
+}
+
+window.increaseItem = function(name, price){ cart.push({name, price}); total+=price; updateCart(); }
+window.decreaseItem = function(name){ for(let i=0;i<cart.length;i++){ if(cart[i].name===name){ total-=cart[i].price; cart.splice(i,1); break; } } updateCart(); }
+window.openCart = function(){ document.getElementById("cartPopup").classList.add("active"); }
+function showToast(){ let t=document.getElementById("toast"); t.style.display="block"; setTimeout(()=>t.style.display="none",1200); }
+
+// --- PLACE ORDER ---
+window.placeOrder = function(){
+    if(cart.length===0){ alert("Add items first!"); return; }
+    const popup = document.createElement("div");
+    popup.className = "popup-overlay";
+    popup.innerHTML = `
+        <div class="popup-box">
+            <h3>Complete Order</h3>
+            <input id="custName" placeholder="Enter your name" style="width:100%;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #ccc;">
+            <textarea id="custReq" placeholder="Special request (optional)" style="width:100%;padding:10px;border-radius:8px;border:1px solid #ccc;"></textarea>
+            <button class="place-btn" onclick="confirmOrder()">Confirm Order</button>
+        </div>`;
+    document.body.appendChild(popup);
+}
+
+window.confirmOrder = function(){
+    const name = document.getElementById("custName").value.trim();
+    const req = document.getElementById("custReq").value.trim();
+    if(name===""){ alert("Please enter your name"); return; }
+    const orderId = Math.floor(100000 + Math.random()*900000);
+    set(ref(db,'orders/'+orderId), { id:orderId, name, request:req, cart, total, status:"Pending", created_at: Date.now() })
+    .then(()=>{
+        document.body.innerHTML = `<div style="text-align:center;margin-top:60px;font-family:Poppins;">
+            <h2>Order Placed ✅</h2>
+            <p>Thank you, ${name}</p>
+            <h1 style="margin:15px 0;color:#2E8B8B;">${orderId}</h1>
+            <p style="font-size:14px;color:#555;">Copy this Order ID to check order status</p>
+        </div>`;
+    });
+}
+</script>
+
+</body>
+</html>
