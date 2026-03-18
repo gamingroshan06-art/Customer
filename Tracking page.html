@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Track Order</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet">
+  <style>
+    body { font-family:Poppins; text-align:center; background:#F5E6C8; padding:20px; }
+    .box { background:white; padding:20px; border-radius:12px; max-width:350px; margin:auto; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
+    input { width:90%; padding:10px; margin:10px 0; border-radius:8px; border:1px solid #ccc; }
+    button { padding:10px 20px; background:#2E8B8B; color:white; border:none; border-radius:8px; cursor:pointer; }
+    .status { margin-top:20px; font-size:18px; font-weight:bold; }
+  </style>
+</head>
+<body>
+
+<h2>Track Your Order</h2>
+
+<div class="box">
+  <input id="orderId" placeholder="Enter Order ID">
+  <button onclick="checkStatus()">Check Status</button>
+  <div id="result" class="status"></div>
+</div>
+
+<!-- Firebase -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+  // Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyDOb5A4AomHgJTS2HZdyd_w8fgWU87ciNU",
+    authDomain: "chaiordering.firebaseapp.com",
+    databaseURL: "https://chaiordering-default-rtdb.firebaseio.com",
+    projectId: "chaiordering",
+    storageBucket: "chaiordering.firebasestorage.app",
+    messagingSenderId: "785518509461",
+    appId: "1:785518509461:web:b428d69a0819161fc10a9c"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+
+  window.checkStatus = function(){
+    const orderId = document.getElementById("orderId").value.trim();
+    if(!orderId) return alert("Enter Order ID");
+
+    const orderRef = ref(database, 'orders/' + orderId);
+
+    // Listen to realtime updates for this order
+    onValue(orderRef, (snapshot) => {
+      const order = snapshot.val();
+      const result = document.getElementById("result");
+
+      if(order){
+        result.innerHTML = "Status: " + order.status;
+      } else {
+        result.innerHTML = "Order not found ❌";
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

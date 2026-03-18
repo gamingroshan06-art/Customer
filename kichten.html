@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Kitchen Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #111;
+      color: white;
+      padding: 10px;
+    }
+
+    h2 { text-align:center; }
+
+    .order {
+      background:#222;
+      padding:15px;
+      margin-bottom:15px;
+      border-radius:10px;
+      border-left:5px solid orange;
+    }
+
+    .order h3 { margin:0; color:#FFD700; }
+
+    .status {
+      font-weight:bold;
+      margin-top:5px;
+    }
+
+    button {
+      margin:5px 5px 0 0;
+      padding:6px 10px;
+      border:none;
+      border-radius:5px;
+      cursor:pointer;
+      color:white;
+    }
+
+    .accept { background:green; }
+    .prepare { background:#007bff; }
+    .cancel { background:red; }
+    .serve { background:#28a745; }
+  </style>
+</head>
+
+<body>
+
+<h2>👨‍🍳 Kitchen Orders</h2>
+<div id="orders"></div>
+
+<!-- 🔔 Sound -->
+<audio id="bell" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+import { getDatabase, ref, onValue, update, remove } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyDOb5A4AomHgJTS2HZdyd_w8fgWU87ciNU",
+  authDomain: "chaiordering.firebaseapp.com",
+  databaseURL: "https://chaiordering-default-rtdb.firebaseio.com",
+  projectId: "chaiordering",
+  storageBucket: "chaiordering.firebasestorage.app",
+  messagingSenderId: "785518509461",
+  appId: "1:785518509461:web:b428d69a0819161fc10a9c"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const ordersRef = ref(db, "orders");
+
+let lastOrderCount = 0;
+
+// 🔹 Real-time listener
+onValue(ordersRef, snapshot => {
+  const data = snapshot.val() || {};
+  const container = document.getElementById("orders");
+
+  container.innerHTML = "";
+
+  let orders = Object.values(data);
+
+  // ✅ Old top, new bottom
+  orders.sort((a,b) => a.created_at - b.created_at);
+
+  // 🔔 Sound
+  if(orders.length > lastOrderCount){
+    document.getElementById("bell").play();
+  }
+  lastOrderCount = orders.length;
+
+  orders.forEach(order => {
+
+    let grouped = {};
+    order.cart.forEach(item=>{
+      if(!grouped[item.name]){
+        grouped[item.name] = { qty:1 };
+      } else {
+        grouped[item.name].qty++;
+      }
+    });
+
+    let itemsHTML="";
+    for(let name in grouped){
+      itemsHTML += `<p>${name} x${grouped[name].qty}</p>`;
+    }
+
+    const div = document.createElement("div");
+    div.className="order";
+
+    div.innerHTML = `
+      <h3>🍽️ Order #${order.id}</h3>
+      <p><b>Name:</b> ${order.name}</p>
+      <p><b>Time:</b> ${new Date(order.created_at).toLocaleTimeString()}</p>
+      <div class="status">Status: ${order.status}</div>
+      ${itemsHTML}
+      <p><b>Total:</b> ₹${order.total}</p>
+
+      <button class="accept" onclick="updateStatus('${order.id}','Accepted')">Accept</button>
+      <button class="prepare" onclick="updateStatus('${order.id}','Preparing')">Preparing</button>
+      <button class="cancel" onclick="updateStatus('${order.id}','Cancelled')">Cancel</button>
+      <button class="serve" onclick="serveOrder('${order.id}')">Served</button>
+    `;
+
+    container.appendChild(div);
+  });
+});
+
+// 🔄 Update status
+window.updateStatus = function(id, status){
+  update(ref(db, 'orders/' + id), {
+    status: status
+  });
+}
+
+// ❌ Served → delete everywhere
+window.serveOrder = function(id){
+  if(confirm("Mark as served?")){
+    remove(ref(db, 'orders/' + id));
+  }
+}
+</script>
+
+</body>
+</html>
